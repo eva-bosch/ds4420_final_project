@@ -1,0 +1,69 @@
+---
+title: "content_filtering"
+output: html_document
+date: "2025-04-11"
+---
+
+```{r setup, include=TRUE}
+library(tidyverse)
+library(readr)
+library(dplyr)
+library(stringr)
+library(tidyr)
+library(scales)
+library(caret)   
+library(proxy)
+```
+
+```{r}
+tea_data <- read_csv("tea_data.csv")
+
+tea_features <- tea_data %>%
+  select(`Tea Name`, Brand, Style, Region, Caffeine, `Loose Type`,
+         `Aroma Rating`, `Flavor Rating`, `Value Rating`) %>%
+  distinct()
+
+# encoding 
+dummies <- dummyVars(~ Brand + Style + Region + Caffeine + `Loose Type`, data = tea_features)
+cat_features <- predict(dummies, newdata = tea_features) %>% as.data.frame()
+
+# normalization 
+num_features <- tea_features %>%
+  select(`Aroma Rating`, `Flavor Rating`, `Value Rating`) %>%
+  mutate(across(everything(), rescale))
+
+# matrix 
+tea_matrix <- bind_cols(num_features, cat_features)
+tea_names <- tea_features$`Tea Name`
+```
+
+```{r}
+# cosine similarity 
+tea_similarity <- as.matrix(
+  proxy::dist(tea_matrix, method = "cosine"))
+
+tea_similarity <- 1 - tea_similarity
+rownames(tea_similarity) <- tea_names
+colnames(tea_similarity) <- tea_names
+tea_similarity[1:5, 1:5]
+```
+
+```{r}
+# recommending top n similar items 
+recommend_similar_teas <- function(tea_name, n = 5) {
+  if (!(tea_name %in% rownames(tea_similarity))) {
+    stop("Tea not found in matrix.")
+  }
+  
+# scores 
+  sims <- tea_similarity[tea_name, ]
+  sims <- sims[names(sims) != tea_name]
+  top_teas <- sort(sims, decreasing = TRUE)[1:n]
+  
+  return(data.frame(Tea = names(top_teas), Similarity = round(top_teas, 3)))}
+```
+
+```{r}
+# testing 
+recommend_similar_teas("Black King", n = 5)
+```
